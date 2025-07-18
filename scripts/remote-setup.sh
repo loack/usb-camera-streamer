@@ -96,6 +96,7 @@ services:
       - PYTHONUNBUFFERED=1
     networks:
       - camera-network
+    user: root
 
 networks:
   camera-network:
