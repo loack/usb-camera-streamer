@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USB Camera Streamer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #666;
+        }
+        select, input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.stop {
+            background-color: #dc3545;
+        }
+        button.stop:hover {
+            background-color: #c82333;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        .status.running {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.stopped {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+        }
+        .stream-link {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .stream-link a {
+            display: inline-block;
+            background-color: #28a745;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .stream-link a:hover {
+            background-color: #218838;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>USB Camera Streamer</h1>
+        
+        <div class="section">
+            <h2>Available Cameras</h2>
+            <div id="cameras-loading" class="loading">Loading cameras...</div>
+            <div id="cameras-list" style="display: none;">
+                <div class="form-group">
+                    <label for="camera-select">Select Camera:</label>
+                    <select id="camera-select">
+                        <option value="">-- Select a camera --</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Stream Settings</h2>
+            <div class="controls">
+                <div>
+                    <div class="form-group">
+                        <label for="format-select">Format:</label>
+                        <select id="format-select">
+                            <option value="MJPEG">MJPEG</option>
+                            <option value="YUYV">YUYV</option>
+                            <option value="H264">H264</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="resolution-select">Resolution:</label>
+                        <select id="resolution-select">
+                            <option value="640x480">640x480</option>
+                            <option value="800x600">800x600</option>
+                            <option value="1024x768">1024x768</option>
+                            <option value="1280x720">1280x720</option>
+                            <option value="1920x1080">1920x1080</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="form-group">
+                        <label for="fps-input">FPS:</label>
+                        <input type="number" id="fps-input" value="30" min="1" max="60">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="custom-resolution">Custom Resolution:</label>
+                        <input type="text" id="custom-resolution" placeholder="e.g., 1280x720">
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button id="start-btn" onclick="startStream()">Start Stream</button>
+                <button id="stop-btn" onclick="stopStream()" class="stop">Stop Stream</button>
+                <button onclick="refreshCameras()">Refresh Cameras</button>
+            </div>
+            
+            <div id="status" class="status stopped">
+                Stream is not running
+            </div>
+        </div>
+
+        <div id="stream-section" class="stream-link" style="display: none;">
+            <a href="/stream" target="_blank">View Stream</a>
+        </div>
+    </div>
+
+    <script>
+        let cameras = [];
+        let currentStatus = null;
+
+        // Load cameras on page load
+        window.onload = function() {
+            loadCameras();
+            checkStatus();
+            setInterval(checkStatus, 3000); // Check status every 3 seconds
+        };
+
+        async function loadCameras() {
+            try {
+                document.getElementById('cameras-loading').style.display = 'block';
+                document.getElementById('cameras-list').style.display = 'none';
+                
+                const response = await fetch('/api/cameras');
+                cameras = await response.json();
+                
+                const select = document.getElementById('camera-select');
+                select.innerHTML = '<option value="">-- Select a camera --</option>';
+                
+                cameras.forEach(camera => {
+                    const option = document.createElement('option');
+                    option.value = camera.device;
+                    option.textContent = `${camera.name} (${camera.device})`;
+                    select.appendChild(option);
+                });
+                
+                document.getElementById('cameras-loading').style.display = 'none';
+                document.getElementById('cameras-list').style.display = 'block';
+                
+                // Update resolution options when camera changes
+                select.addEventListener('change', updateResolutionOptions);
+                
+            } catch (error) {
+                console.error('Error loading cameras:', error);
+                document.getElementById('cameras-loading').textContent = 'Error loading cameras';
+            }
+        }
+
+        function updateResolutionOptions() {
+            const deviceSelect = document.getElementById('camera-select');
+            const resolutionSelect = document.getElementById('resolution-select');
+            const formatSelect = document.getElementById('format-select');
+            
+            const selectedDevice = deviceSelect.value;
+            const camera = cameras.find(c => c.device === selectedDevice);
+            
+            if (camera && camera.formats && camera.formats.length > 0) {
+                // Update format options
+                formatSelect.innerHTML = '';
+                const availableFormats = [...new Set(camera.formats.map(f => f.format))];
+                availableFormats.forEach(format => {
+                    const option = document.createElement('option');
+                    option.value = format;
+                    option.textContent = format;
+                    formatSelect.appendChild(option);
+                });
+                
+                // Update resolution options for first format
+                updateResolutionsForFormat();
+                formatSelect.addEventListener('change', updateResolutionsForFormat);
+            } else {
+                // Use default options if no specific formats available
+                formatSelect.innerHTML = `
+                    <option value="MJPEG">MJPEG</option>
+                    <option value="YUYV">YUYV</option>
+                    <option value="H264">H264</option>
+                `;
+                resolutionSelect.innerHTML = `
+                    <option value="640x480">640x480</option>
+                    <option value="800x600">800x600</option>
+                    <option value="1024x768">1024x768</option>
+                    <option value="1280x720">1280x720</option>
+                    <option value="1920x1080">1920x1080</option>
+                `;
+            }
+        }
+
+        function updateResolutionsForFormat() {
+            const deviceSelect = document.getElementById('camera-select');
+            const resolutionSelect = document.getElementById('resolution-select');
+            const formatSelect = document.getElementById('format-select');
+            
+            const selectedDevice = deviceSelect.value;
+            const selectedFormat = formatSelect.value;
+            const camera = cameras.find(c => c.device === selectedDevice);
+            
+            if (camera && camera.formats) {
+                const formatInfo = camera.formats.find(f => f.format === selectedFormat);
+                if (formatInfo && formatInfo.resolutions) {
+                    resolutionSelect.innerHTML = '';
+                    formatInfo.resolutions.forEach(res => {
+                        const option = document.createElement('option');
+                        option.value = `${res.width}x${res.height}`;
+                        option.textContent = `${res.width}x${res.height}`;
+                        resolutionSelect.appendChild(option);
+                    });
+                }
+            }
+        }
+
+        async function startStream() {
+            const device = document.getElementById('camera-select').value;
+            const format = document.getElementById('format-select').value;
+            const resolution = document.getElementById('custom-resolution').value || 
+                             document.getElementById('resolution-select').value;
+            const fps = document.getElementById('fps-input').value;
+            
+            if (!device) {
+                alert('Please select a camera first');
+                return;
+            }
+            
+            const [width, height] = resolution.split('x').map(Number);
+            
+            if (!width || !height) {
+                alert('Invalid resolution format. Use format like 1280x720');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/stream/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        device: device,
+                        width: width,
+                        height: height,
+                        fps: parseInt(fps),
+                        format: format
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    checkStatus();
+                } else {
+                    alert('Failed to start stream: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error starting stream:', error);
+                alert('Error starting stream');
+            }
+        }
+
+        async function stopStream() {
+            try {
+                const response = await fetch('/api/stream/stop', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                checkStatus();
+            } catch (error) {
+                console.error('Error stopping stream:', error);
+                alert('Error stopping stream');
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/stream/status');
+                const status = await response.json();
+                
+                const statusDiv = document.getElementById('status');
+                const streamSection = document.getElementById('stream-section');
+                
+                if (status.running) {
+                    const settings = status.settings;
+                    statusDiv.className = 'status running';
+                    statusDiv.innerHTML = `
+                        Stream is running<br>
+                        Device: ${settings.device}<br>
+                        Resolution: ${settings.width}x${settings.height}<br>
+                        FPS: ${settings.fps}<br>
+                        Format: ${settings.format}
+                    `;
+                    streamSection.style.display = 'block';
+                } else {
+                    statusDiv.className = 'status stopped';
+                    statusDiv.textContent = 'Stream is not running';
+                    streamSection.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        }
+
+        function refreshCameras() {
+            loadCameras();
+        }
+    </script>
+</body>
+</html>

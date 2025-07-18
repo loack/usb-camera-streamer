@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  usb-camera-streamer:
+    build: .
+    container_name: usb-camera-streamer
+    ports:
+      - "5000:5000"   # Flask web interface
+      - "8080:8080"   # ustreamer video stream
+    devices:
+      - /dev/video0:/dev/video0  # Add more video devices as needed
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
+    privileged: true  # Required for full access to USB devices
+    volumes:
+      - /dev:/dev     # Mount device directory
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - camera-network
+
+networks:
+  camera-network:
+    driver: bridge

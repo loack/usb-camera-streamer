@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Stream</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            margin-bottom: 30px;
+        }
+        .stream-container {
+            position: relative;
+            display: inline-block;
+            border: 2px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #stream-frame {
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            display: block;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #333;
+            border-radius: 5px;
+            text-align: left;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .error {
+            color: #ff6b6b;
+            background-color: #2d1b1b;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .loading {
+            color: #ffd93d;
+            font-size: 18px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Camera Stream</h1>
+        
+        <div id="loading" class="loading">
+            Checking stream status...
+        </div>
+        
+        <div id="stream-content" style="display: none;">
+            <div class="stream-container">
+                <iframe id="stream-frame" src="http://localhost:8080/stream" width="800" height="600"></iframe>
+            </div>
+            
+            <div class="controls">
+                <button onclick="refreshStream()">Refresh Stream</button>
+                <button onclick="openFullscreen()">Fullscreen</button>
+                <button onclick="window.close()">Close</button>
+                <button onclick="window.location.href='/'">Back to Control Panel</button>
+            </div>
+            
+            <div class="info">
+                <h3>Stream Information</h3>
+                <div id="stream-info">Loading stream information...</div>
+            </div>
+        </div>
+        
+        <div id="error-content" style="display: none;">
+            <div class="error">
+                <h3>Stream Not Available</h3>
+                <p>The camera stream is not currently running. Please go back to the control panel and start a stream.</p>
+                <button onclick="window.location.href='/'">Go to Control Panel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let checkInterval;
+
+        window.onload = function() {
+            checkStreamStatus();
+            checkInterval = setInterval(checkStreamStatus, 5000); // Check every 5 seconds
+        };
+
+        window.onbeforeunload = function() {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
+        };
+
+        async function checkStreamStatus() {
+            try {
+                const response = await fetch('/api/stream/status');
+                const status = await response.json();
+                
+                const loading = document.getElementById('loading');
+                const streamContent = document.getElementById('stream-content');
+                const errorContent = document.getElementById('error-content');
+                
+                if (status.running) {
+                    loading.style.display = 'none';
+                    streamContent.style.display = 'block';
+                    errorContent.style.display = 'none';
+                    
+                    // Update stream info
+                    const settings = status.settings;
+                    document.getElementById('stream-info').innerHTML = `
+                        <strong>Device:</strong> ${settings.device}<br>
+                        <strong>Resolution:</strong> ${settings.width}x${settings.height}<br>
+                        <strong>FPS:</strong> ${settings.fps}<br>
+                        <strong>Format:</strong> ${settings.format}<br>
+                        <strong>Stream URL:</strong> <a href="http://localhost:8080/stream" target="_blank">http://localhost:8080/stream</a>
+                    `;
+                    
+                    // Update iframe source to ensure it's current
+                    const iframe = document.getElementById('stream-frame');
+                    const currentSrc = iframe.src;
+                    const newSrc = `http://${window.location.hostname}:8080/stream`;
+                    if (currentSrc !== newSrc) {
+                        iframe.src = newSrc;
+                    }
+                    
+                } else {
+                    loading.style.display = 'none';
+                    streamContent.style.display = 'none';
+                    errorContent.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error checking stream status:', error);
+                document.getElementById('loading').textContent = 'Error checking stream status';
+            }
+        }
+
+        function refreshStream() {
+            const iframe = document.getElementById('stream-frame');
+            iframe.src = iframe.src; // Reload iframe
+        }
+
+        function openFullscreen() {
+            const streamUrl = `http://${window.location.hostname}:8080/stream`;
+            window.open(streamUrl, '_blank', 'fullscreen=yes,scrollbars=no,menubar=no,toolbar=no');
+        }
+
+        // Handle iframe loading errors
+        document.getElementById('stream-frame').onerror = function() {
+            console.log('Stream iframe failed to load');
+        };
+        
+        document.getElementById('stream-frame').onload = function() {
+            console.log('Stream iframe loaded successfully');
+        };
+    </script>
+</body>
+</html>
